@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "499237680606",
+    "project_id": "ceheto-99413",
+    "storage_bucket": "ceheto-99413.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:499237680606:android:f74cf2afd9d487f4b1994f",
+        "android_client_info": {
+          "package_name": "com.example.flutter_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "499237680606-48cbm4pv621loulih7481j1noedcqk49.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB02SUCJUyGsf_Kgk51bPDZHgOp4vdRxDE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "499237680606-48cbm4pv621loulih7481j1noedcqk49.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
