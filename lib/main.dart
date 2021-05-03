@@ -1,14 +1,47 @@
-import 'dart:ffi';
-
+import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/screen/login.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'package:permission_handler/permission_handler.dart';
+import 'package:toast/toast.dart';
+
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  print('Handling a background message ${message.messageId}');
+}
+
+const AndroidNotificationChannel channel = AndroidNotificationChannel(
+  'high_importance_channel', // id
+  'High Importance Notifications', // title
+  'This channel is used for important notifications.', // description
+  importance: Importance.high,
+);
+
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
+
+  await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+    alert: true,
+    badge: true,
+    sound: true,
+  );
   runApp(MyApp());
 }
 
@@ -32,10 +65,71 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
+  TextEditingController _controller;
+  ScrollController _scrollController;
+  final currentUser = FirebaseAuth.instance.currentUser.email;
+  final isMe = null;
+
+  //var timeStamp = DateTime.now().millisecondsSinceEpoch.toString();
+
+  final meDecoration = BoxDecoration(
+    color: Colors.orange.shade100,
+    borderRadius: BorderRadius.only(
+      topLeft: Radius.circular(10),
+      bottomRight: Radius.circular(10),
+      topRight: Radius.circular(10),
+      bottomLeft: Radius.circular(0),
+    ),
+  );
+  final otherDecoration = BoxDecoration(
+    color: Colors.grey,
+    borderRadius: BorderRadius.only(
+      topLeft: Radius.circular(10),
+      topRight: Radius.circular(10),
+      bottomRight: Radius.circular(0),
+      bottomLeft: Radius.circular(10),
+    ),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = new TextEditingController();
+    _scrollController = new ScrollController();
+    getToken();
+
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('ic_launcher');
+
+    final InitializationSettings initializationSettings =
+        InitializationSettings(android: initializationSettingsAndroid);
+    flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      RemoteNotification notification = message.notification;
+      AndroidNotification android = message.notification?.android;
+      if (notification != null && android != null) {
+        flutterLocalNotificationsPlugin.show(
+            notification.hashCode,
+            notification.title,
+            notification.body,
+            NotificationDetails(
+              android: AndroidNotificationDetails(
+                channel.id,
+                channel.name,
+                channel.description,
+                icon: 'launch_background',
+              ),
+            ));
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       child: Scaffold(
+        resizeToAvoidBottomInset: false,
         appBar: AppBar(
           backgroundColor: Colors.cyan.shade700,
           title: Text(
@@ -144,6 +238,7 @@ class _HomeState extends State<Home> {
                           ),
                         ),
                         trailing: IconButton(
+                          onPressed: () {},
                           icon: FaIcon(
                             FontAwesomeIcons.arrowDown,
                             color: Colors.white,
@@ -224,27 +319,217 @@ class _HomeState extends State<Home> {
             ],
           ),
         ),
-        body: Center(
-          child: Row(
+        body: Container(
+          child: Column(
             children: [
-              RaisedButton(
-                child: Text("Register"),
-                onPressed: () async {},
-              )
+              Container(
+                height: MediaQuery.of(context).size.height - 150,
+                child: StreamBuilder(
+                  stream: FirebaseFirestore.instance
+                      .collection("chatMessage")
+                      .orderBy("timestamp")
+                      .snapshots(),
+                  builder: (BuildContext context,
+                      AsyncSnapshot<QuerySnapshot> snapshot) {
+                    return ListView(
+                      children:
+                          snapshot.data.docs.map((DocumentSnapshot document) {
+                        return Column(
+                          crossAxisAlignment:
+                              FirebaseAuth.instance.currentUser.email ==
+                                      document.data()["userEmail"]
+                                  ? CrossAxisAlignment.start
+                                  : CrossAxisAlignment.end,
+                          children: [
+                            Container(
+                              margin: FirebaseAuth.instance.currentUser.email ==
+                                      document.data()["userEmail"]
+                                  ? EdgeInsets.only(
+                                      left: 10,
+                                      top: 10,
+                                    )
+                                  : EdgeInsets.only(
+                                      top: 10,
+                                      right: 10,
+                                    ),
+                              height: 50,
+                              width: 280,
+                              decoration:
+                                  FirebaseAuth.instance.currentUser.email ==
+                                          document.data()["userEmail"]
+                                      ? meDecoration
+                                      : otherDecoration,
+                              child: Container(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      document.data()["userEmail"],
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      height: 3,
+                                    ),
+                                    Text(
+                                      document.data()["message"],
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                margin: EdgeInsets.only(left: 8, top: 8),
+                              ),
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
+              ),
+              Expanded(
+                child: Stack(
+                  children: [
+                    Positioned(
+                      bottom: 0,
+                      child: Container(
+                        child: TextFormField(
+                          cursorColor: Colors.red,
+                          controller: _controller,
+                          decoration: InputDecoration(
+                              icon: FaIcon(
+                                FontAwesomeIcons.smile,
+                                size: 28,
+                                color: Colors.grey.shade500,
+                              ),
+                              contentPadding: EdgeInsets.all(6),
+                              focusedBorder: OutlineInputBorder(
+                                borderSide: BorderSide(
+                                  color: Colors.transparent,
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(
+                                color: Colors.transparent,
+                              )),
+                              labelStyle: TextStyle(
+                                color: Colors.black54,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              hintText: "Enter the message",
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10.0),
+                              )),
+                        ),
+                        padding: EdgeInsets.all(10),
+                        height: 70,
+                        width: 330,
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 20,
+                      right: 16,
+                      child: GestureDetector(
+                        onTap: () async {
+                          var token =
+                              await FirebaseMessaging.instance.getToken();
+                          var collection = FirebaseFirestore.instance
+                              .collection("chatMessage");
+
+                          if (_controller.value.text.isEmpty) {
+                            Toast.show("Alanı baş bırakmayın", context,
+                                gravity: Toast.BOTTOM);
+                          } else {
+                            collection.add({
+                              "message": _controller.value.text,
+                              "timestamp": Timestamp.now(),
+                              "userEmail":
+                                  FirebaseAuth.instance.currentUser.email
+                            });
+
+                            var data = {
+                              "to": token,
+                              "notification": {
+                                "title":
+                                    FirebaseAuth.instance.currentUser.email,
+                                "body": _controller.value.text,
+                              },
+                            };
+                            var response = await http.post(
+                              Uri.parse("https://fcm.googleapis.com/fcm/send"),
+                              headers: {
+                                'Content-type': 'application/json',
+                                'Authorization':
+                                    'key=AAAAdDzidd4:APA91bFgqjMPKJEGzJzrudyZ1P_g5ruNfIzTNWV7x1lj3bHXMw76APkmFwyLGNwsQEITvFJKrsgAgTqGVBwX_nHY0qVx--EwJsNd-WvSrdk1b9ZX_kZsz-JBYj3tZY7Qgq9VF7ePWgN0',
+                              },
+                              body: jsonEncode(
+                                data,
+                              ),
+                            );
+                            if (response.statusCode == 401) {
+                              print("authorization");
+                            }
+                            if (response.statusCode == 200) {
+                              print("Success");
+                            }
+                            _controller.text = "";
+
+                            _scrollController.jumpTo(_scrollController
+                                    .position.maxScrollExtent
+                                    .ceilToDouble() +
+                                50);
+                          }
+                        },
+                        child: Container(
+                          child: FaIcon(
+                            FontAwesomeIcons.paperPlane,
+                            size: 22,
+                            color: Colors.cyan.shade700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 20,
+                      right: 60,
+                      child: GestureDetector(
+                        onTap: () {
+                          //  Toast.show(path.current.toString()+ ""+ DateTime.now().millisecondsSinceEpoch.toString(), context);
+                        },
+                        onLongPress: () async {
+                          if (await Permission.storage.isDenied) {
+                            await Permission.storage.request();
+                          }
+                          if (true) {
+                          } else {
+                            Toast.show(
+                                "Ses kaydetme iznini vermelisiniz", context);
+                          }
+                        },
+                        onLongPressEnd: (detail) async {},
+                        child: Icon(
+                          Icons.keyboard_voice_outlined,
+                          size: 24,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
-          ),
-        ),
-        floatingActionButton: FloatingActionButton(
-          backgroundColor: Colors.cyan.shade700,
-          onPressed: () {
-            print("Float");
-          },
-          child: Icon(
-            Icons.edit,
-            color: Colors.white,
           ),
         ),
       ),
     );
   }
+}
+
+getToken() async {
+  String token = await FirebaseMessaging.instance.getToken();
+  print("Token :" + token);
+  return token;
 }

@@ -289,11 +289,21 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
                                                   _passController.value.text,
                                             );
                                             if (userCredential != null) {
-                                              Toast.show(
-                                                  "Giriş Başarılı", context,
-                                                  gravity: Toast.BOTTOM);
-                                              Navigator.pushNamed(
-                                                  context, "/home");
+                                              if (!FirebaseAuth.instance
+                                                  .currentUser.emailVerified) {
+                                                Toast.show(
+                                                    "Email onaylayın", context,
+                                                    gravity: Toast.BOTTOM);
+
+                                                FirebaseAuth.instance
+                                                    .currentUser.sendEmailVerification();
+                                              } else {
+                                                Toast.show(
+                                                    "Giriş Başarılı", context,
+                                                    gravity: Toast.BOTTOM);
+                                                Navigator.pushNamed(
+                                                    context, "/home");
+                                              }
                                             }
                                           } on FirebaseAuthException catch (e) {
                                             if (e.code == 'user-not-found') {
@@ -516,7 +526,6 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
                             Expanded(
                               child: Stack(
                                 children: [
-
                                   Positioned(
                                     child: Container(
                                       height: 60,
@@ -576,11 +585,12 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
                                             Toast.show(
                                                 "Kayıt Oldunuz.Giriş Ekranına Yönlendiriliyorsunuz",
                                                 context,
-                                                duration: Toast.LENGTH_SHORT,
+                                                duration: Toast.LENGTH_LONG,
                                                 gravity: Toast.BOTTOM);
                                             _pass1Controller.text = "";
                                             _passAgainController.text = "";
                                             _email1Controller.text = "";
+                                            Navigator.pushNamed(context, "/");
                                           } else {
                                             Toast.show(
                                                 "Girdiğiniz Şifreler Uyuşmuyor.Kontrol Ediniz!",
