@@ -1,15 +1,26 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fab_circular_menu/fab_circular_menu.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+
+import 'package:flutter_app/screen/chat/chatMessage.dart';
 import 'package:flutter_app/screen/login.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_sound/flutter_sound.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:toast/toast.dart';
+import 'package:firebase_storage/firebase_storage.dart' as firebase_storage;
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
@@ -55,6 +66,11 @@ class MyApp extends StatelessWidget {
         "/": (context) => Login(),
         "/home": (context) => Home(),
       },
+      theme: ThemeData(
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          backgroundColor: Colors.cyan.shade700,
+        ),
+      ),
     );
   }
 }
@@ -69,27 +85,17 @@ class _HomeState extends State<Home> {
   ScrollController _scrollController;
   final currentUser = FirebaseAuth.instance.currentUser.email;
   final isMe = null;
+  var resultImageList;
+  final GlobalKey<FabCircularMenuState> fabKey = GlobalKey();
+  FlutterSoundRecorder _recorder;
 
-  //var timeStamp = DateTime.now().millisecondsSinceEpoch.toString();
-
-  final meDecoration = BoxDecoration(
-    color: Colors.orange.shade100,
-    borderRadius: BorderRadius.only(
-      topLeft: Radius.circular(10),
-      bottomRight: Radius.circular(10),
-      topRight: Radius.circular(10),
-      bottomLeft: Radius.circular(0),
-    ),
-  );
-  final otherDecoration = BoxDecoration(
-    color: Colors.grey,
-    borderRadius: BorderRadius.only(
-      topLeft: Radius.circular(10),
-      topRight: Radius.circular(10),
-      bottomRight: Radius.circular(0),
-      bottomLeft: Radius.circular(10),
-    ),
-  );
+  @override
+  void dispose() {
+    if (_recorder != null) {
+      _recorder.closeAudioSession();
+    }
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -97,6 +103,7 @@ class _HomeState extends State<Home> {
     _controller = new TextEditingController();
     _scrollController = new ScrollController();
     getToken();
+    _recorder = new FlutterSoundRecorder();
 
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('ic_launcher');
@@ -161,8 +168,30 @@ class _HomeState extends State<Home> {
             GestureDetector(
               child: Icon(Icons.water_damage_sharp),
               onTap: () async {
-                await FirebaseAuth.instance.signOut();
-                Navigator.pushNamed(context, "/");
+                showDialog(
+                    context: context,
+                    builder: (BuildContext context) {
+                      return AlertDialog(
+                        title: Text("Çıkmak İstiyormusun?"),
+                        actions: [
+                          TextButton(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                            },
+                            child: Text("Hayır"),
+                          ),
+                          TextButton(
+                            onPressed: () async {
+                              await FirebaseAuth.instance.signOut();
+                              final GoogleSignIn googleSignIn = GoogleSignIn();
+                              googleSignIn.signOut();
+                              Navigator.pushNamed(context, "/");
+                            },
+                            child: Text("Evet"),
+                          ),
+                        ],
+                      );
+                    });
               },
             ),
             SizedBox(
@@ -322,212 +351,357 @@ class _HomeState extends State<Home> {
         body: Container(
           child: Column(
             children: [
-              Container(
-                height: MediaQuery.of(context).size.height - 150,
-                child: StreamBuilder(
-                  stream: FirebaseFirestore.instance
-                      .collection("chatMessage")
-                      .orderBy("timestamp")
-                      .snapshots(),
-                  builder: (BuildContext context,
-                      AsyncSnapshot<QuerySnapshot> snapshot) {
-                    return ListView(
-                      children:
-                          snapshot.data.docs.map((DocumentSnapshot document) {
-                        return Column(
-                          crossAxisAlignment:
-                              FirebaseAuth.instance.currentUser.email ==
-                                      document.data()["userEmail"]
-                                  ? CrossAxisAlignment.start
-                                  : CrossAxisAlignment.end,
-                          children: [
-                            Container(
-                              margin: FirebaseAuth.instance.currentUser.email ==
-                                      document.data()["userEmail"]
-                                  ? EdgeInsets.only(
-                                      left: 10,
-                                      top: 10,
-                                    )
-                                  : EdgeInsets.only(
-                                      top: 10,
-                                      right: 10,
-                                    ),
-                              height: 50,
-                              width: 280,
-                              decoration:
-                                  FirebaseAuth.instance.currentUser.email ==
-                                          document.data()["userEmail"]
-                                      ? meDecoration
-                                      : otherDecoration,
-                              child: Container(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      document.data()["userEmail"],
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    SizedBox(
-                                      height: 3,
-                                    ),
-                                    Text(
-                                      document.data()["message"],
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                margin: EdgeInsets.only(left: 8, top: 8),
-                              ),
-                            ),
-                          ],
-                        );
-                      }).toList(),
-                    );
-                  },
-                ),
-              ),
+              chatMessage(),
               Expanded(
-                child: Stack(
-                  children: [
-                    Positioned(
-                      bottom: 0,
-                      child: Container(
-                        child: TextFormField(
-                          cursorColor: Colors.red,
-                          controller: _controller,
-                          decoration: InputDecoration(
-                              icon: FaIcon(
-                                FontAwesomeIcons.smile,
-                                size: 28,
-                                color: Colors.grey.shade500,
-                              ),
-                              contentPadding: EdgeInsets.all(6),
-                              focusedBorder: OutlineInputBorder(
-                                borderSide: BorderSide(
-                                  color: Colors.transparent,
-                                ),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                color: Colors.transparent,
-                              )),
-                              labelStyle: TextStyle(
-                                color: Colors.black54,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              hintText: "Enter the message",
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10.0),
-                              )),
-                        ),
-                        padding: EdgeInsets.all(10),
-                        height: 70,
-                        width: 330,
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 20,
-                      right: 16,
-                      child: GestureDetector(
-                        onTap: () async {
-                          var token =
-                              await FirebaseMessaging.instance.getToken();
-                          var collection = FirebaseFirestore.instance
-                              .collection("chatMessage");
-
-                          if (_controller.value.text.isEmpty) {
-                            Toast.show("Alanı baş bırakmayın", context,
-                                gravity: Toast.BOTTOM);
-                          } else {
-                            collection.add({
-                              "message": _controller.value.text,
-                              "timestamp": Timestamp.now(),
-                              "userEmail":
-                                  FirebaseAuth.instance.currentUser.email
-                            });
-
-                            var data = {
-                              "to": token,
-                              "notification": {
-                                "title":
-                                    FirebaseAuth.instance.currentUser.email,
-                                "body": _controller.value.text,
-                              },
-                            };
-                            var response = await http.post(
-                              Uri.parse("https://fcm.googleapis.com/fcm/send"),
-                              headers: {
-                                'Content-type': 'application/json',
-                                'Authorization':
-                                    'key=AAAAdDzidd4:APA91bFgqjMPKJEGzJzrudyZ1P_g5ruNfIzTNWV7x1lj3bHXMw76APkmFwyLGNwsQEITvFJKrsgAgTqGVBwX_nHY0qVx--EwJsNd-WvSrdk1b9ZX_kZsz-JBYj3tZY7Qgq9VF7ePWgN0',
-                              },
-                              body: jsonEncode(
-                                data,
-                              ),
-                            );
-                            if (response.statusCode == 401) {
-                              print("authorization");
-                            }
-                            if (response.statusCode == 200) {
-                              print("Success");
-                            }
-                            _controller.text = "";
-
-                            _scrollController.jumpTo(_scrollController
-                                    .position.maxScrollExtent
-                                    .ceilToDouble() +
-                                50);
-                          }
-                        },
+                child: Container(
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        bottom: 0,
                         child: Container(
-                          child: FaIcon(
-                            FontAwesomeIcons.paperPlane,
-                            size: 22,
-                            color: Colors.cyan.shade700,
+                          child: TextFormField(
+                            cursorColor: Colors.red,
+                            controller: _controller,
+                            decoration: InputDecoration(
+                                icon: FaIcon(
+                                  FontAwesomeIcons.smile,
+                                  size: 28,
+                                  color: Colors.grey.shade500,
+                                ),
+                                contentPadding: EdgeInsets.all(6),
+                                focusedBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(
+                                    color: Colors.transparent,
+                                  ),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                    borderSide: BorderSide(
+                                  color: Colors.transparent,
+                                )),
+                                labelStyle: TextStyle(
+                                  color: Colors.black54,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                hintText: "Enter the message",
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10.0),
+                                )),
+                          ),
+                          padding: EdgeInsets.all(10),
+                          height: 70,
+                          width: 330,
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 20,
+                        right: 16,
+                        child: GestureDetector(
+                          onTap: () async {
+                            var token =
+                                await FirebaseMessaging.instance.getToken();
+                            var collection = FirebaseFirestore.instance
+                                .collection("chatMessage");
+
+                            if (_controller.value.text.isEmpty) {
+                              Toast.show("Alanı baş bırakmayın", context,
+                                  gravity: Toast.BOTTOM);
+                            } else {
+                              collection.add({
+                                "message": _controller.value.text,
+                                "timestamp": Timestamp.now(),
+                                "userEmail":
+                                    FirebaseAuth.instance.currentUser.email,
+                                "messageType": "message"
+                              });
+
+                              var data = {
+                                "to": token,
+                                "notification": {
+                                  "title":
+                                      FirebaseAuth.instance.currentUser.email,
+                                  "body": _controller.value.text,
+                                },
+                              };
+                              var response = await http.post(
+                                Uri.parse(
+                                    "https://fcm.googleapis.com/fcm/send"),
+                                headers: {
+                                  'Content-type': 'application/json',
+                                  'Authorization':
+                                      'key=AAAAdDzidd4:APA91bFgqjMPKJEGzJzrudyZ1P_g5ruNfIzTNWV7x1lj3bHXMw76APkmFwyLGNwsQEITvFJKrsgAgTqGVBwX_nHY0qVx--EwJsNd-WvSrdk1b9ZX_kZsz-JBYj3tZY7Qgq9VF7ePWgN0',
+                                },
+                                body: jsonEncode(
+                                  data,
+                                ),
+                              );
+                              if (response.statusCode == 401) {
+                                print("authorization");
+                              }
+                              if (response.statusCode == 200) {
+                                print("Success");
+                              }
+                              _controller.text = "";
+
+                              _scrollController.jumpTo(_scrollController
+                                      .position.maxScrollExtent
+                                      .ceilToDouble() +
+                                  50);
+                            }
+                          },
+                          child: Container(
+                            child: FaIcon(
+                              FontAwesomeIcons.paperPlane,
+                              size: 22,
+                              color: Colors.cyan.shade700,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    Positioned(
-                      bottom: 20,
-                      right: 60,
-                      child: GestureDetector(
-                        onTap: () {
-                          //  Toast.show(path.current.toString()+ ""+ DateTime.now().millisecondsSinceEpoch.toString(), context);
-                        },
-                        onLongPress: () async {
-                          if (await Permission.storage.isDenied) {
-                            await Permission.storage.request();
-                          }
-                          if (true) {
-                          } else {
-                            Toast.show(
-                                "Ses kaydetme iznini vermelisiniz", context);
-                          }
-                        },
-                        onLongPressEnd: (detail) async {},
-                        child: Icon(
-                          Icons.keyboard_voice_outlined,
-                          size: 24,
-                        ),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],
           ),
         ),
+        floatingActionButton: FabCircularMenu(
+          key: fabKey,
+          animationDuration: Duration(seconds: 1),
+          alignment: Alignment(1.0, 0.84),
+          fabOpenIcon: Icon(
+            Icons.add,
+            color: Colors.white,
+          ),
+          fabCloseIcon: Icon(
+            Icons.cancel,
+            color: Colors.white,
+          ),
+          fabColor: Colors.grey.shade800,
+          ringColor: Colors.grey.shade800,
+          children: [
+            Container(
+              height: 60,
+              width: 60,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.orange.shade500,
+              ),
+              child: IconButton(
+                icon: Icon(
+                  Icons.photo,
+                  size: 40,
+                  color: Colors.white,
+                ),
+                onPressed: () async {
+                  var result = await FilePicker.platform.pickFiles(
+                    type: FileType.image,
+                    allowCompression: true,
+                  );
+                  var token = await FirebaseMessaging.instance.getToken();
+
+                  if (result.files.first == null) {
+                    Toast.show("Seçilemedi", context, gravity: Toast.BOTTOM);
+                  } else {
+                    try {
+                      var link;
+                      var reference = await firebase_storage
+                          .FirebaseStorage.instance
+                          .ref()
+                          .child("/uploads/image/" + result.files.first.path);
+                      var storage = await reference
+                          .putFile(new File(result.files.first.path));
+                      var referenceNetwork = await reference
+                          .getDownloadURL()
+                          .then((value) => link = value);
+
+                      var collection =
+                          FirebaseFirestore.instance.collection("chatMessage");
+                      collection.add({
+                        "timestamp": Timestamp.now(),
+                        "userEmail": FirebaseAuth.instance.currentUser.email,
+                        "messageType": "photo",
+                        "imageUrl": reference.fullPath,
+                        "downloadLink": link,
+                      });
+                    } catch (e) {
+                      print("Hata VARRRRRRRRRRRRRRRRRRRRRRRRRrr");
+                    }
+
+                    var data = {
+                      "to": token,
+                      "notification": {
+                        "title": FirebaseAuth.instance.currentUser.email,
+                        "body": result.files.first.path,
+                      },
+                    };
+                    var response = await http.post(
+                      Uri.parse("https://fcm.googleapis.com/fcm/send"),
+                      headers: {
+                        'Content-type': 'application/json',
+                        'Authorization':
+                            'key=AAAAdDzidd4:APA91bFgqjMPKJEGzJzrudyZ1P_g5ruNfIzTNWV7x1lj3bHXMw76APkmFwyLGNwsQEITvFJKrsgAgTqGVBwX_nHY0qVx--EwJsNd-WvSrdk1b9ZX_kZsz-JBYj3tZY7Qgq9VF7ePWgN0',
+                      },
+                      body: jsonEncode(
+                        data,
+                      ),
+                    );
+                    if (response.statusCode == 401) {
+                      print("authorization");
+                    }
+                    if (response.statusCode == 200) {
+                      print("Success");
+                    }
+                    if (fabKey.currentState.isOpen) {
+                      fabKey.currentState.close();
+                    }
+                  }
+                },
+              ),
+            ),
+            Container(
+              height: 60,
+              width: 60,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.green.shade500,
+              ),
+              child: IconButton(
+                icon: Icon(
+                  Icons.insert_drive_file,
+                  size: 40,
+                  color: Colors.white,
+                ),
+                onPressed: () async {
+                  FilePickerResult result = await FilePicker.platform.pickFiles(
+                    type: FileType.any,
+                    allowMultiple: true,
+                    allowCompression: true,
+                  );
+                },
+              ),
+            ),
+            Container(
+              height: 60,
+              width: 60,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.blue.shade500,
+              ),
+              child: IconButton(
+                icon: Icon(
+                  Icons.location_on,
+                  size: 40,
+                  color: Colors.white,
+                ),
+                onPressed: () async {
+                  FilePickerResult result = await FilePicker.platform.pickFiles(
+                    type: FileType.any,
+                    allowMultiple: true,
+                    allowCompression: true,
+                  );
+                },
+              ),
+            ),
+            Container(
+              height: 60,
+              width: 60,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.brown.shade500,
+              ),
+              child: IconButton(
+                icon: Icon(
+                  Icons.poll,
+                  size: 40,
+                  color: Colors.white,
+                ),
+                onPressed: () async {
+                  FilePickerResult result = await FilePicker.platform.pickFiles(
+                    type: FileType.any,
+                    allowMultiple: true,
+                    allowCompression: true,
+                  );
+                },
+              ),
+            ),
+            GestureDetector(
+              onLongPress: () async {
+                var hasPermission = await Permission.microphone.isGranted;
+                if (!hasPermission) {
+                  await Permission.microphone.request().isGranted;
+                }
+                Directory appDocDir = await getApplicationDocumentsDirectory();
+                String appDocPath = appDocDir.path;
+                print("*********************************");
+
+                await _recorder.openAudioSession().then((value) {
+                  _recorder.startRecorder(
+                    codec: Codec.aacADTS,
+                    toFile: appDocPath +
+                        "/" +
+                        DateTime.now().millisecondsSinceEpoch.toString() +
+                        ".aac",
+                  );
+                  if (_recorder.isRecording) {
+                    Toast.show("Kaydediliyor", context);
+                  }
+                });
+              },
+              onLongPressEnd: (value) async {
+                String path = await _recorder.stopRecorder();
+                await _recorder.closeAudioSession();
+                if (_recorder.isStopped) {
+                  Toast.show("Stop Recording : Path > " + path, context,
+                      gravity: Toast.BOTTOM);
+                }
+                try {
+                  var link;
+                  var reference = await firebase_storage
+                      .FirebaseStorage.instance
+                      .ref()
+                      .child("/uploads/sound/" + path);
+                  var storage = await reference.putFile(new File(path));
+                  var referenceNetwork = await reference
+                      .getDownloadURL()
+                      .then((value) => link = value);
+
+                  var collection =
+                      FirebaseFirestore.instance.collection("chatMessage");
+                  collection.add({
+                    "timestamp": Timestamp.now(),
+                    "userEmail": FirebaseAuth.instance.currentUser.email,
+                    "messageType": "sound",
+                    "imageUrl": reference.fullPath,
+                    "downloadLink": link,
+                  });
+
+                  if (fabKey.currentState.isOpen) {
+                    fabKey.currentState.close();
+                  }
+                } catch (e) {
+                  print("Hata VARRRRRRRRRRRRRRRRRRRRRRRRRrr");
+                }
+              },
+              child: Container(
+                height: 60,
+                width: 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.red.shade500,
+                ),
+                child: Icon(
+                  Icons.mic,
+                  size: 32,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
-
 getToken() async {
   String token = await FirebaseMessaging.instance.getToken();
   print("Token :" + token);
