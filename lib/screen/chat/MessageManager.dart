@@ -6,20 +6,20 @@ import 'package:flutter_app/screen/chat/type/PhotoBubble.dart';
 import 'package:flutter_app/screen/chat/type/SoundBubble.dart';
 
 // ignore: must_be_immutable
-class Message extends StatefulWidget {
+class MessageManager extends StatefulWidget {
   String _userEmail;
   String _message;
   String _messageType;
   String _imageUrl;
 
-  Message(this._userEmail, this._message, this._messageType, this._imageUrl);
+  MessageManager(this._userEmail, this._message, this._messageType, this._imageUrl);
 
   String get image => this._imageUrl;
 
   @override
   _MessageState createState() => _MessageState();
 }
-class _MessageState extends State<Message> {
+class _MessageState extends State<MessageManager> {
   var _indirmeBaglantisi;
 
   String getDownloadUrl(String path) {

@@ -90,16 +90,12 @@ class _SoundBubbleState extends State<SoundBubble> {
                           shape: BoxShape.circle,
                           color: Colors.red.shade500,
                         ),
-                        child: IconButton(
-                          onPressed: (){
-
-                          },
-                          icon: Icon(
+                       child: Icon(
                             Icons.play_arrow_sharp,
                             size: 40,
                             color: Colors.white,
                           ),
-                        ),
+
                       ),
                     ),
                     Expanded(

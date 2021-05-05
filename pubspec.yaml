@@ -32,18 +32,19 @@ dependencies:
   firebase_core: ^1.0.4
   firebase_auth: ^1.1.1
   toast: ^0.1.5
+  path: ^1.8.0
   google_sign_in: ^5.0.2
   cloud_firestore: ^1.0.3
   firebase_messaging: ^9.1.2
   flutter_local_notifications: ^5.0.0+1
   http: ^0.13.1
-  path: ^1.8.0
   permission_handler: ^7.0.0
   firebase_storage: ^8.0.5
   file_picker: ^3.0.1
   fab_circular_menu: ^1.0.2
   flutter_sound: ^8.1.1
   path_provider: ^2.0.1
+  camera_camera: ^2.0.1
 
 dev_dependencies:
   flutter_test:

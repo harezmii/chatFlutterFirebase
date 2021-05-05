@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:camera_camera/camera_camera.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fab_circular_menu/fab_circular_menu.dart';
 import 'package:file_picker/file_picker.dart';
@@ -9,8 +11,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-
-import 'package:flutter_app/screen/chat/chatMessage.dart';
+import 'package:flutter_app/screen/chat/MessageManager.dart';
 import 'package:flutter_app/screen/login.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_sound/flutter_sound.dart';
@@ -39,6 +40,7 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   await Firebase.initializeApp();
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
@@ -88,6 +90,7 @@ class _HomeState extends State<Home> {
   var resultImageList;
   final GlobalKey<FabCircularMenuState> fabKey = GlobalKey();
   FlutterSoundRecorder _recorder;
+  File _file;
 
   @override
   void dispose() {
@@ -102,6 +105,7 @@ class _HomeState extends State<Home> {
     super.initState();
     _controller = new TextEditingController();
     _scrollController = new ScrollController();
+
     getToken();
     _recorder = new FlutterSoundRecorder();
 
@@ -132,8 +136,90 @@ class _HomeState extends State<Home> {
     });
   }
 
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent.ceilToDouble(),
+          duration: Duration(milliseconds: 300),
+          curve: Curves.elasticOut);
+    } else {
+      Timer(Duration(milliseconds: 400), () => _scrollToBottom());
+    }
+  }
+  openCamera() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) {
+          return CameraCamera(
+            onFile: (file) async {
+              setState(() {
+                _file = file;
+              });
+
+              var token = await FirebaseMessaging.instance.getToken();
+
+              try {
+                var link;
+                var reference = await firebase_storage.FirebaseStorage.instance
+                    .ref()
+                    .child("/uploads/image/" +_file.path);
+                var storage = await reference.putFile(new File(_file.path));
+                var referenceNetwork =
+                    await reference.getDownloadURL().then((value) => link = value);
+
+                var collection = FirebaseFirestore.instance.collection("chatMessage");
+                collection.add({
+                  "timestamp": Timestamp.now(),
+                  "userEmail": FirebaseAuth.instance.currentUser.email,
+                  "messageType": "photo",
+                  "imageUrl": reference.fullPath,
+                  "downloadLink": link,
+                });
+              } catch (e) {
+                print("Hata VARRRRRRRRRRRRRRRRRRRRRRRRRrr");
+              }
+
+              var data = {
+                "to": token,
+                "notification": {
+                  "title": FirebaseAuth.instance.currentUser.email,
+                  "body": _file.path,
+                },
+              };
+              var response = await http.post(
+                Uri.parse("https://fcm.googleapis.com/fcm/send"),
+                headers: {
+                  'Content-type': 'application/json',
+                  'Authorization':
+                  'key=AAAAdDzidd4:APA91bFgqjMPKJEGzJzrudyZ1P_g5ruNfIzTNWV7x1lj3bHXMw76APkmFwyLGNwsQEITvFJKrsgAgTqGVBwX_nHY0qVx--EwJsNd-WvSrdk1b9ZX_kZsz-JBYj3tZY7Qgq9VF7ePWgN0',
+                },
+                body: jsonEncode(
+                  data,
+                ),
+              );
+              if (response.statusCode == 401) {
+                print("authorization");
+              }
+              if (response.statusCode == 200) {
+                print("Success");
+              }
+
+              Navigator.pop(context);
+
+
+
+
+            },
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     return SafeArea(
       child: Scaffold(
         resizeToAvoidBottomInset: false,
@@ -348,121 +434,157 @@ class _HomeState extends State<Home> {
             ],
           ),
         ),
-        body: Container(
-          child: Column(
-            children: [
-              chatMessage(),
-              Expanded(
-                child: Container(
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        bottom: 0,
-                        child: Container(
-                          child: TextFormField(
-                            cursorColor: Colors.red,
-                            controller: _controller,
-                            decoration: InputDecoration(
-                                icon: FaIcon(
-                                  FontAwesomeIcons.smile,
-                                  size: 28,
-                                  color: Colors.grey.shade500,
-                                ),
-                                contentPadding: EdgeInsets.all(6),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: Colors.transparent,
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                    borderSide: BorderSide(
-                                  color: Colors.transparent,
-                                )),
-                                labelStyle: TextStyle(
-                                  color: Colors.black54,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                hintText: "Enter the message",
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10.0),
-                                )),
-                          ),
-                          padding: EdgeInsets.all(10),
-                          height: 70,
-                          width: 330,
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 20,
-                        right: 16,
-                        child: GestureDetector(
-                          onTap: () async {
-                            var token =
-                                await FirebaseMessaging.instance.getToken();
-                            var collection = FirebaseFirestore.instance
-                                .collection("chatMessage");
-
-                            if (_controller.value.text.isEmpty) {
-                              Toast.show("Alanı baş bırakmayın", context,
-                                  gravity: Toast.BOTTOM);
-                            } else {
-                              collection.add({
-                                "message": _controller.value.text,
-                                "timestamp": Timestamp.now(),
-                                "userEmail":
-                                    FirebaseAuth.instance.currentUser.email,
-                                "messageType": "message"
-                              });
-
-                              var data = {
-                                "to": token,
-                                "notification": {
-                                  "title":
-                                      FirebaseAuth.instance.currentUser.email,
-                                  "body": _controller.value.text,
-                                },
-                              };
-                              var response = await http.post(
-                                Uri.parse(
-                                    "https://fcm.googleapis.com/fcm/send"),
-                                headers: {
-                                  'Content-type': 'application/json',
-                                  'Authorization':
-                                      'key=AAAAdDzidd4:APA91bFgqjMPKJEGzJzrudyZ1P_g5ruNfIzTNWV7x1lj3bHXMw76APkmFwyLGNwsQEITvFJKrsgAgTqGVBwX_nHY0qVx--EwJsNd-WvSrdk1b9ZX_kZsz-JBYj3tZY7Qgq9VF7ePWgN0',
-                                },
-                                body: jsonEncode(
-                                  data,
-                                ),
-                              );
-                              if (response.statusCode == 401) {
-                                print("authorization");
-                              }
-                              if (response.statusCode == 200) {
-                                print("Success");
-                              }
-                              _controller.text = "";
-
-                              _scrollController.jumpTo(_scrollController
-                                      .position.maxScrollExtent
-                                      .ceilToDouble() +
-                                  50);
-                            }
-                          },
-                          child: Container(
-                            child: FaIcon(
-                              FontAwesomeIcons.paperPlane,
-                              size: 22,
-                              color: Colors.cyan.shade700,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+        body: Stack(
+          children: [
+            Column(
+              children: [
+                Flexible(
+                  child: StreamBuilder(
+                    stream: FirebaseFirestore.instance
+                        .collection("chatMessage")
+                        .orderBy("timestamp")
+                        .snapshots(),
+                    builder: (BuildContext context,
+                        AsyncSnapshot<QuerySnapshot> snapshot) {
+                      if (snapshot.hasError) {
+                        Toast.show("Hata Var", context);
+                      }
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return Center(
+                          child: CircularProgressIndicator(),
+                        );
+                      }
+                      return ListView(
+                        controller: _scrollController,
+                        children:
+                            snapshot.data.docs.map((DocumentSnapshot document) {
+                          return MessageManager(
+                            document.data()["userEmail"],
+                            document.data()["message"],
+                            document.data()["messageType"],
+                            document.data()["downloadLink"],
+                          );
+                        }).toList(),
+                      );
+                    },
                   ),
                 ),
-              ),
-            ],
-          ),
+                Padding(
+                  padding: EdgeInsets.only(
+                      bottom: MediaQuery.of(context).viewInsets.bottom),
+                  child: Container(
+                    child: Container(
+                      height: 50,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              onTap: () {
+                                Timer(Duration(seconds: 1), () {
+                                  _scrollController.jumpTo(_scrollController
+                                      .position.maxScrollExtent);
+                                });
+                              },
+                              cursorColor: Colors.red,
+                              controller: _controller,
+                              decoration: InputDecoration(
+                                  icon: FaIcon(
+                                    FontAwesomeIcons.smile,
+                                    size: 28,
+                                    color: Colors.grey.shade500,
+                                  ),
+                                  contentPadding: EdgeInsets.all(6),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderSide: BorderSide(
+                                      color: Colors.transparent,
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                      borderSide: BorderSide(
+                                    color: Colors.transparent,
+                                  )),
+                                  labelStyle: TextStyle(
+                                    color: Colors.black54,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  hintText: "Enter the message",
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10.0),
+                                  )),
+                            ),
+                          ),
+                          Container(
+                            width: 50,
+                            child: GestureDetector(
+                              onTap: () async {
+                                var token =
+                                    await FirebaseMessaging.instance.getToken();
+                                var collection = FirebaseFirestore.instance
+                                    .collection("chatMessage");
+
+                                if (_controller.value.text.isEmpty) {
+                                  Toast.show("Alanı baş bırakmayın", context,
+                                      gravity: Toast.CENTER);
+                                } else {
+                                  collection.add({
+                                    "message": _controller.value.text,
+                                    "timestamp": Timestamp.now(),
+                                    "userEmail":
+                                        FirebaseAuth.instance.currentUser.email,
+                                    "messageType": "message"
+                                  });
+
+                                  var data = {
+                                    "to": token,
+                                    "notification": {
+                                      "title": FirebaseAuth
+                                          .instance.currentUser.email,
+                                      "body": _controller.value.text,
+                                    },
+                                  };
+                                  var response = await http.post(
+                                    Uri.parse(
+                                        "https://fcm.googleapis.com/fcm/send"),
+                                    headers: {
+                                      'Content-type': 'application/json',
+                                      'Authorization':
+                                          'key=AAAAdDzidd4:APA91bFgqjMPKJEGzJzrudyZ1P_g5ruNfIzTNWV7x1lj3bHXMw76APkmFwyLGNwsQEITvFJKrsgAgTqGVBwX_nHY0qVx--EwJsNd-WvSrdk1b9ZX_kZsz-JBYj3tZY7Qgq9VF7ePWgN0',
+                                    },
+                                    body: jsonEncode(
+                                      data,
+                                    ),
+                                  );
+                                  if (response.statusCode == 401) {
+                                    print("authorization");
+                                  }
+                                  if (response.statusCode == 200) {
+                                    print("Success");
+                                  }
+                                  _controller.text = "";
+
+                                  _scrollController.animateTo(
+                                      _scrollController.position.maxScrollExtent
+                                              .ceilToDouble() +
+                                          50,
+                                      duration: Duration(milliseconds: 300),
+                                      curve: Curves.elasticOut);
+                                }
+                              },
+                              child: FaIcon(
+                                FontAwesomeIcons.paperPlane,
+                                size: 22,
+                                color: Colors.cyan.shade700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
         floatingActionButton: FabCircularMenu(
           key: fabKey,
@@ -479,83 +601,90 @@ class _HomeState extends State<Home> {
           fabColor: Colors.grey.shade800,
           ringColor: Colors.grey.shade800,
           children: [
-            Container(
-              height: 60,
-              width: 60,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.orange.shade500,
-              ),
-              child: IconButton(
-                icon: Icon(
+            GestureDetector(
+              onTap: () async {
+                var result = await FilePicker.platform.pickFiles(
+                  type: FileType.image,
+                  allowCompression: true,
+                );
+                var token = await FirebaseMessaging.instance.getToken();
+
+                if (result == null) {
+                  Toast.show("Seçilemedi", context, gravity: Toast.BOTTOM);
+                  Navigator.pushNamed(context, "/home");
+                } else {
+                  try {
+                    var link;
+                    var reference = await firebase_storage
+                        .FirebaseStorage.instance
+                        .ref()
+                        .child("/uploads/image/" + result.files.first.path);
+                    var storage = await reference
+                        .putFile(new File(result.files.first.path));
+                    var referenceNetwork = await reference
+                        .getDownloadURL()
+                        .then((value) => link = value);
+
+                    var collection =
+                        FirebaseFirestore.instance.collection("chatMessage");
+                    collection.add({
+                      "timestamp": Timestamp.now(),
+                      "userEmail": FirebaseAuth.instance.currentUser.email,
+                      "messageType": "photo",
+                      "imageUrl": reference.fullPath,
+                      "downloadLink": link,
+                    });
+                  } catch (e) {
+                    print("Hata VARRRRRRRRRRRRRRRRRRRRRRRRRrr");
+                  }
+
+                  var data = {
+                    "to": token,
+                    "notification": {
+                      "title": FirebaseAuth.instance.currentUser.email,
+                      "body": result.files.first.path,
+                    },
+                  };
+                  var response = await http.post(
+                    Uri.parse("https://fcm.googleapis.com/fcm/send"),
+                    headers: {
+                      'Content-type': 'application/json',
+                      'Authorization':
+                          'key=AAAAdDzidd4:APA91bFgqjMPKJEGzJzrudyZ1P_g5ruNfIzTNWV7x1lj3bHXMw76APkmFwyLGNwsQEITvFJKrsgAgTqGVBwX_nHY0qVx--EwJsNd-WvSrdk1b9ZX_kZsz-JBYj3tZY7Qgq9VF7ePWgN0',
+                    },
+                    body: jsonEncode(
+                      data,
+                    ),
+                  );
+                  if (response.statusCode == 401) {
+                    print("authorization");
+                  }
+                  if (response.statusCode == 200) {
+                    print("Success");
+                  }
+                  if (fabKey.currentState.isOpen) {
+                    fabKey.currentState.close();
+                  }
+                  _scrollController.animateTo(
+                      _scrollController.position.maxScrollExtent
+                              .ceilToDouble() +
+                          200,
+                      duration: Duration(milliseconds: 300),
+                      curve: Curves.elasticOut);
+                }
+              },
+              child: Container(
+                height: 60,
+                width: 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.orange.shade500,
+                ),
+                child: Icon(
                   Icons.photo,
                   size: 40,
                   color: Colors.white,
                 ),
-                onPressed: () async {
-                  var result = await FilePicker.platform.pickFiles(
-                    type: FileType.image,
-                    allowCompression: true,
-                  );
-                  var token = await FirebaseMessaging.instance.getToken();
-
-                  if (result.files.first == null) {
-                    Toast.show("Seçilemedi", context, gravity: Toast.BOTTOM);
-                  } else {
-                    try {
-                      var link;
-                      var reference = await firebase_storage
-                          .FirebaseStorage.instance
-                          .ref()
-                          .child("/uploads/image/" + result.files.first.path);
-                      var storage = await reference
-                          .putFile(new File(result.files.first.path));
-                      var referenceNetwork = await reference
-                          .getDownloadURL()
-                          .then((value) => link = value);
-
-                      var collection =
-                          FirebaseFirestore.instance.collection("chatMessage");
-                      collection.add({
-                        "timestamp": Timestamp.now(),
-                        "userEmail": FirebaseAuth.instance.currentUser.email,
-                        "messageType": "photo",
-                        "imageUrl": reference.fullPath,
-                        "downloadLink": link,
-                      });
-                    } catch (e) {
-                      print("Hata VARRRRRRRRRRRRRRRRRRRRRRRRRrr");
-                    }
-
-                    var data = {
-                      "to": token,
-                      "notification": {
-                        "title": FirebaseAuth.instance.currentUser.email,
-                        "body": result.files.first.path,
-                      },
-                    };
-                    var response = await http.post(
-                      Uri.parse("https://fcm.googleapis.com/fcm/send"),
-                      headers: {
-                        'Content-type': 'application/json',
-                        'Authorization':
-                            'key=AAAAdDzidd4:APA91bFgqjMPKJEGzJzrudyZ1P_g5ruNfIzTNWV7x1lj3bHXMw76APkmFwyLGNwsQEITvFJKrsgAgTqGVBwX_nHY0qVx--EwJsNd-WvSrdk1b9ZX_kZsz-JBYj3tZY7Qgq9VF7ePWgN0',
-                      },
-                      body: jsonEncode(
-                        data,
-                      ),
-                    );
-                    if (response.statusCode == 401) {
-                      print("authorization");
-                    }
-                    if (response.statusCode == 200) {
-                      print("Success");
-                    }
-                    if (fabKey.currentState.isOpen) {
-                      fabKey.currentState.close();
-                    }
-                  }
-                },
               ),
             ),
             Container(
@@ -602,26 +731,25 @@ class _HomeState extends State<Home> {
                 },
               ),
             ),
-            Container(
-              height: 60,
-              width: 60,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.brown.shade500,
-              ),
-              child: IconButton(
-                icon: Icon(
-                  Icons.poll,
+            GestureDetector(
+              onTap: () async {
+                openCamera();
+                if(fabKey.currentState.isOpen) {
+                  fabKey.currentState.close();
+                }
+              },
+              child: Container(
+                height: 60,
+                width: 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.brown.shade500,
+                ),
+                child: Icon(
+                  Icons.camera_alt_outlined,
                   size: 40,
                   color: Colors.white,
                 ),
-                onPressed: () async {
-                  FilePickerResult result = await FilePicker.platform.pickFiles(
-                    type: FileType.any,
-                    allowMultiple: true,
-                    allowCompression: true,
-                  );
-                },
               ),
             ),
             GestureDetector(
@@ -675,9 +803,42 @@ class _HomeState extends State<Home> {
                     "downloadLink": link,
                   });
 
+                  var token = await FirebaseMessaging.instance.getToken();
+
+                  var data = {
+                    "to": token,
+                    "notification": {
+                      "title": FirebaseAuth.instance.currentUser.email,
+                      "body": "Ses Kaydedildi",
+                    },
+                  };
+                  var response = await http.post(
+                    Uri.parse("https://fcm.googleapis.com/fcm/send"),
+                    headers: {
+                      'Content-type': 'application/json',
+                      'Authorization':
+                          'key=AAAAdDzidd4:APA91bFgqjMPKJEGzJzrudyZ1P_g5ruNfIzTNWV7x1lj3bHXMw76APkmFwyLGNwsQEITvFJKrsgAgTqGVBwX_nHY0qVx--EwJsNd-WvSrdk1b9ZX_kZsz-JBYj3tZY7Qgq9VF7ePWgN0',
+                    },
+                    body: jsonEncode(
+                      data,
+                    ),
+                  );
+                  if (response.statusCode == 401) {
+                    print("authorization");
+                  }
+                  if (response.statusCode == 200) {
+                    print("Success");
+                  }
+
                   if (fabKey.currentState.isOpen) {
                     fabKey.currentState.close();
                   }
+                  _scrollController.animateTo(
+                      _scrollController.position.maxScrollExtent
+                              .ceilToDouble() +
+                          50,
+                      duration: Duration(milliseconds: 300),
+                      curve: Curves.elasticOut);
                 } catch (e) {
                   print("Hata VARRRRRRRRRRRRRRRRRRRRRRRRRrr");
                 }
@@ -702,6 +863,7 @@ class _HomeState extends State<Home> {
     );
   }
 }
+
 getToken() async {
   String token = await FirebaseMessaging.instance.getToken();
   print("Token :" + token);

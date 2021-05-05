@@ -27,7 +27,7 @@ class MessageBubble extends StatelessWidget {
             top: 10,
             right: 10,
           ),
-          height: 50,
+          height: 70,
           width: 280,
           decoration: FirebaseAuth.instance.currentUser.email ==
               _userEmail
@@ -54,6 +54,8 @@ class MessageBubble extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 14,
                   ),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
