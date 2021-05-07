@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/main.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:toast/toast.dart';
@@ -17,10 +18,26 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
   TextEditingController _pass1Controller;
   TextEditingController _passAgainController;
 
+  isUserLogin() async {
+    var user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      print("Mezarcıcccc");
+    } else {
+      setState(() {
+
+      });
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => Home(),
+        ),
+      );
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-
     _tabController = new TabController(length: 2, initialIndex: 0, vsync: this);
     _emailController = new TextEditingController();
     _email1Controller = new TextEditingController();
@@ -229,7 +246,9 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
                                         return error;
                                       });
                                       userCredential.whenComplete(() {
-                                        Toast.show("Hesap Seçilemedi! > Giriş yapmak için hesap seçmelisiniz <", context,
+                                        Toast.show(
+                                            "Hesap Seçilemedi! > Giriş yapmak için hesap seçmelisiniz <",
+                                            context,
                                             gravity: Toast.BOTTOM);
                                       });
                                       userCredential.then((value) {
@@ -296,8 +315,9 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
                                                     "Email onaylayın", context,
                                                     gravity: Toast.BOTTOM);
 
-                                                FirebaseAuth.instance
-                                                    .currentUser.sendEmailVerification();
+                                                FirebaseAuth
+                                                    .instance.currentUser
+                                                    .sendEmailVerification();
                                               } else {
                                                 Toast.show(
                                                     "Giriş Başarılı", context,

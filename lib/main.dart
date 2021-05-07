@@ -11,8 +11,10 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_app/screen/chat/MessageManager.dart';
 import 'package:flutter_app/screen/login.dart';
+import 'package:flutter_app/screen/userProfile.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -25,6 +27,7 @@ import 'package:firebase_storage/firebase_storage.dart' as firebase_storage;
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
+  await FirebaseMessaging.instance.subscribeToTopic("/topics/all");
   print('Handling a background message ${message.messageId}');
 }
 
@@ -43,6 +46,7 @@ Future<void> main() async {
 
   await Firebase.initializeApp();
 
+
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   await flutterLocalNotificationsPlugin
@@ -50,11 +54,6 @@ Future<void> main() async {
           AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(channel);
 
-  await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-    alert: true,
-    badge: true,
-    sound: true,
-  );
   runApp(MyApp());
 }
 
@@ -63,7 +62,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      initialRoute: "/",
+      initialRoute: FirebaseAuth.instance.currentUser == null ? "/" : "/home",
       routes: {
         "/": (context) => Login(),
         "/home": (context) => Home(),
@@ -92,6 +91,8 @@ class _HomeState extends State<Home> {
   FlutterSoundRecorder _recorder;
   File _file;
 
+
+
   @override
   void dispose() {
     if (_recorder != null) {
@@ -119,6 +120,7 @@ class _HomeState extends State<Home> {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       RemoteNotification notification = message.notification;
       AndroidNotification android = message.notification?.android;
+
       if (notification != null && android != null) {
         flutterLocalNotificationsPlugin.show(
             notification.hashCode,
@@ -134,18 +136,19 @@ class _HomeState extends State<Home> {
             ));
       }
     });
+
   }
 
   void _scrollToBottom() {
     if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent.ceilToDouble(),
-          duration: Duration(milliseconds: 300),
-          curve: Curves.elasticOut);
+      _scrollController.jumpTo(
+        _scrollController.position.maxScrollExtent,
+      );
     } else {
-      Timer(Duration(milliseconds: 400), () => _scrollToBottom());
+      Timer(Duration(milliseconds: 500), () => _scrollToBottom());
     }
   }
+
   openCamera() {
     Navigator.push(
       context,
@@ -163,12 +166,14 @@ class _HomeState extends State<Home> {
                 var link;
                 var reference = await firebase_storage.FirebaseStorage.instance
                     .ref()
-                    .child("/uploads/image/" +_file.path);
+                    .child("/uploads/image/" + _file.path);
                 var storage = await reference.putFile(new File(_file.path));
-                var referenceNetwork =
-                    await reference.getDownloadURL().then((value) => link = value);
+                var referenceNetwork = await reference
+                    .getDownloadURL()
+                    .then((value) => link = value);
 
-                var collection = FirebaseFirestore.instance.collection("chatMessage");
+                var collection =
+                    FirebaseFirestore.instance.collection("chatMessage");
                 collection.add({
                   "timestamp": Timestamp.now(),
                   "userEmail": FirebaseAuth.instance.currentUser.email,
@@ -192,7 +197,7 @@ class _HomeState extends State<Home> {
                 headers: {
                   'Content-type': 'application/json',
                   'Authorization':
-                  'key=AAAAdDzidd4:APA91bFgqjMPKJEGzJzrudyZ1P_g5ruNfIzTNWV7x1lj3bHXMw76APkmFwyLGNwsQEITvFJKrsgAgTqGVBwX_nHY0qVx--EwJsNd-WvSrdk1b9ZX_kZsz-JBYj3tZY7Qgq9VF7ePWgN0',
+                      'key=AAAAdDzidd4:APA91bFgqjMPKJEGzJzrudyZ1P_g5ruNfIzTNWV7x1lj3bHXMw76APkmFwyLGNwsQEITvFJKrsgAgTqGVBwX_nHY0qVx--EwJsNd-WvSrdk1b9ZX_kZsz-JBYj3tZY7Qgq9VF7ePWgN0',
                 },
                 body: jsonEncode(
                   data,
@@ -204,12 +209,10 @@ class _HomeState extends State<Home> {
               if (response.statusCode == 200) {
                 print("Success");
               }
-
+              setState(() {
+               // _scrollToBottom();
+              });
               Navigator.pop(context);
-
-
-
-
             },
           );
         },
@@ -236,7 +239,7 @@ class _HomeState extends State<Home> {
           actions: [
             GestureDetector(
               onTap: () {
-                print("Search");
+                Navigator.push(context, MaterialPageRoute(builder: (context)=> UserProfile(),),);
               },
               child: Container(
                 margin: EdgeInsets.only(
@@ -449,12 +452,30 @@ class _HomeState extends State<Home> {
                       if (snapshot.hasError) {
                         Toast.show("Hata Var", context);
                       }
+                      if (snapshot.data.size == 0) {
+                        return Container(
+                          margin: EdgeInsets.symmetric(
+                            horizontal: 10,
+                          ),
+                          child: Center(
+                            child: Text(
+                              "Herhangi içerik yok. Eklemek için mesaj atabilir, + simgesine basıp butonlara uzun basarak foto, ses atabilir,foto çekebilirsiniz.",
+                              maxLines: 4,
+                              style: TextStyle(
+                                letterSpacing: 0.6,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        );
+                      }
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return Center(
                           child: CircularProgressIndicator(),
                         );
                       }
                       return ListView(
+                        physics: AlwaysScrollableScrollPhysics(),
                         controller: _scrollController,
                         children:
                             snapshot.data.docs.map((DocumentSnapshot document) {
@@ -463,6 +484,7 @@ class _HomeState extends State<Home> {
                             document.data()["message"],
                             document.data()["messageType"],
                             document.data()["downloadLink"],
+                            document.id,
                           );
                         }).toList(),
                       );
@@ -482,7 +504,8 @@ class _HomeState extends State<Home> {
                               onTap: () {
                                 Timer(Duration(seconds: 1), () {
                                   _scrollController.jumpTo(_scrollController
-                                      .position.maxScrollExtent);
+                                          .position.maxScrollExtent -
+                                      50);
                                 });
                               },
                               cursorColor: Colors.red,
@@ -535,13 +558,22 @@ class _HomeState extends State<Home> {
                                   });
 
                                   var data = {
-                                    "to": token,
+                                    "to": "/topics/all",
+                                    "data": {
+                                      "click_action": "FLUTTER_NOTIFICATION_CLICK",
+
+                                      "status": "done",
+                                    },
+                                    "priority": "high",
                                     "notification": {
                                       "title": FirebaseAuth
                                           .instance.currentUser.email,
                                       "body": _controller.value.text,
                                     },
                                   };
+
+
+                                  print("Token"+token+"dercesine");
                                   var response = await http.post(
                                     Uri.parse(
                                         "https://fcm.googleapis.com/fcm/send"),
@@ -562,12 +594,18 @@ class _HomeState extends State<Home> {
                                   }
                                   _controller.text = "";
 
-                                  _scrollController.animateTo(
-                                      _scrollController.position.maxScrollExtent
-                                              .ceilToDouble() +
-                                          50,
-                                      duration: Duration(milliseconds: 300),
-                                      curve: Curves.elasticOut);
+                                  _scrollController.jumpTo(_scrollController
+                                      .position.maxScrollExtent);
+
+                                  // _scrollController.animateTo(
+                                  //     _scrollController.position.maxScrollExtent
+                                  //             .ceilToDouble(),
+                                  //     duration: Duration(seconds: 1),
+                                  //     curve: Curves.bounceOut);
+
+                                  SystemChannels.textInput
+                                      .invokeMethod("TextInput.hide");
+                                  //  FocusManager.instance.primaryFocus.unfocus();
                                 }
                               },
                               child: FaIcon(
@@ -666,9 +704,7 @@ class _HomeState extends State<Home> {
                     fabKey.currentState.close();
                   }
                   _scrollController.animateTo(
-                      _scrollController.position.maxScrollExtent
-                              .ceilToDouble() +
-                          200,
+                      _scrollController.position.maxScrollExtent,
                       duration: Duration(milliseconds: 300),
                       curve: Curves.elasticOut);
                 }
@@ -734,7 +770,7 @@ class _HomeState extends State<Home> {
             GestureDetector(
               onTap: () async {
                 openCamera();
-                if(fabKey.currentState.isOpen) {
+                if (fabKey.currentState.isOpen) {
                   fabKey.currentState.close();
                 }
               },

@@ -1,4 +1,3 @@
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/utils/Constant.dart';
@@ -7,62 +6,71 @@ import 'package:flutter_app/utils/Constant.dart';
 class MessageBubble extends StatelessWidget {
   String _userEmail;
   String _message;
-  MessageBubble(this._userEmail,this._message);
+  String _id;
+
+  MessageBubble(this._userEmail, this._message, this._id);
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: FirebaseAuth.instance.currentUser.email ==
-          _userEmail
-          ? CrossAxisAlignment.start
-          : CrossAxisAlignment.end,
-      children: [
-        Container(
-          margin: FirebaseAuth.instance.currentUser.email ==
-              _userEmail
-              ? EdgeInsets.only(
-            left: 10,
-            top: 10,
-          )
-              : EdgeInsets.only(
-            top: 10,
-            right: 10,
-          ),
-          height: 70,
-          width: 280,
-          decoration: FirebaseAuth.instance.currentUser.email ==
-              _userEmail
-              ? meDecoration
-              : otherDecoration,
-          child: Container(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _userEmail,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+    return GestureDetector(
+      onLongPress: () {
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+           return  dialog(context, "Silmek istiyor musunuz?", this._id,0);
+          },
+        );
+      },
+      child: Column(
+        crossAxisAlignment:
+            FirebaseAuth.instance.currentUser.email == _userEmail
+                ? CrossAxisAlignment.start
+                : CrossAxisAlignment.end,
+        children: [
+          Container(
+            margin: FirebaseAuth.instance.currentUser.email == _userEmail
+                ? EdgeInsets.only(
+                    left: 10,
+                    top: 10,
+                  )
+                : EdgeInsets.only(
+                    top: 10,
+                    right: 10,
                   ),
-                ),
-                SizedBox(
-                  height: 3,
-                ),
-                Text(
-                  _message == null
-                      ? "test"
-                      : _message,
-                  style: TextStyle(
-                    fontSize: 14,
+            height: 70,
+            width: 280,
+            decoration: FirebaseAuth.instance.currentUser.email == _userEmail
+                ? meDecoration
+                : otherDecoration,
+            child: Container(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _userEmail,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+                  SizedBox(
+                    height: 3,
+                  ),
+                  Text(
+                    _message == null ? "test" : _message,
+                    style: TextStyle(
+                      fontSize: 14,
+                    ),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+              margin: EdgeInsets.only(left: 8, top: 8),
             ),
-            margin: EdgeInsets.only(left: 8, top: 8),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

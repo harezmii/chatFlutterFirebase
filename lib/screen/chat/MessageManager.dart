@@ -11,8 +11,9 @@ class MessageManager extends StatefulWidget {
   String _message;
   String _messageType;
   String _imageUrl;
+  String _id;
 
-  MessageManager(this._userEmail, this._message, this._messageType, this._imageUrl);
+  MessageManager(this._userEmail, this._message, this._messageType, this._imageUrl,this._id);
 
   String get image => this._imageUrl;
 
@@ -23,6 +24,7 @@ class _MessageState extends State<MessageManager> {
   var _indirmeBaglantisi;
 
   String getDownloadUrl(String path) {
+
     String url = firebase_storage.FirebaseStorage.instance
         .ref(path)
         .getDownloadURL() as String;
@@ -38,13 +40,13 @@ class _MessageState extends State<MessageManager> {
   Widget messageType(String type){
     switch(type){
       case "message":
-        return MessageBubble(this.widget._userEmail, this.widget._message);
+        return MessageBubble(this.widget._userEmail, this.widget._message,this.widget._id);
         break;
       case "photo":
-        return PhotoBubble(this.widget._userEmail, _indirmeBaglantisi);
+        return PhotoBubble(this.widget._userEmail, _indirmeBaglantisi,this.widget._id);
         break;
       case "sound":
-        return SoundBubble(this.widget._userEmail, _indirmeBaglantisi);
+        return SoundBubble(this.widget._userEmail, _indirmeBaglantisi,this.widget._id);
         break;
     }
   }
